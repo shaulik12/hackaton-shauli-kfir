@@ -16,3 +16,7 @@ def server():
                 if not data:
                     break
                 conn.sendall(data)
+
+
+if __name__ == "main":
+    server()
