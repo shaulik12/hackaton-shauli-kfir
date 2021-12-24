@@ -1,4 +1,5 @@
 from socket import *
+from scapy.arch import get_if_addr
 
 HOST = '127.0.0.1'  # Standard loopback interface address (localhost)
 UDPPORT = 65432        # Port to listen on (non-privileged ports are > 1023)
@@ -16,6 +17,7 @@ def server():
                 if not data:
                     break
                 conn.sendall(data)
+                
 
 
 if __name__ == "main":
