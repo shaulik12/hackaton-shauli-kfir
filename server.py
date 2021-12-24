@@ -16,6 +16,19 @@ class Client:
         self.teamName = ""
     def addTeamName(self, teamName):
         self.teamName = teamName
+class AnswerLock:
+    def __init__(self):
+        self.answer = ""
+        self.player = ""
+        self.lock = threading.Lock()
+    def giveAnswer(self, ans, ply):
+        self.lock.acquire()
+        try:
+            self.answer = ans
+            self.answer = ply
+        finally:
+            self.lock.release
+
 
 tcpPort = -1
 connectedClients = list()
@@ -28,10 +41,11 @@ waitingRiddleAnswer = threading.Event()
 waitingRiddleAnswer.clear()
 
 
-def server():
+def main():
+    ansLock = AnswerLock()
     broadcastThread = threading.Thread(target=udpBroadcast)
-    tcpThread = threading.Thread(target=tcpInit)
-    gameThread = threading.Thread(target=tcpInit)
+    tcpThread = threading.Thread(target=tcpInit, args=ansLock)
+    gameThread = threading.Thread(target=tcpInit, args=ansLock)
     gameThread.start()
     tcpThread.start()
     broadcastThread.start()
@@ -39,7 +53,7 @@ def server():
     tcpThread.join()
     broadcastThread.join()
 
-def tcpInit():
+def tcpInit(answerLock):
     tcpSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     with tcpSocket:
         tcpSocket.bind((socket.gethostname(),0))
@@ -47,52 +61,34 @@ def tcpInit():
         tcpSocket.listen(2)
         while True:
             while len(connectedClients) < 2:
-                clientSocket, addr = tcpSocket.accept()
-                newClient = Client(clientSocket,addr)
-                connectedClients.append(newClient)
-                thread = threading.Thread(target=tcpTalk, args=(newClient,))
+                conn, addr = tcpSocket.accept()
+                newClient = Client(conn,addr)
+                newThread = threading.Thread(target=tcpTalk, args=(newClient,answerLock))
                 connectedClients.append(newClient)               
-                threads.append(thread)
-                thread.start()
+                threads.append(newThread)
+                newThread.start()
             maxClients.set()
             under2Clients.clear()
-            #TODO---------------------------------------------------------------
             under2Clients.wait()
             threads = [t for t in threads if t.is_alive()]
             if len(threads) < 2:
                 maxClients.clear()
-            #TODO---------------------------------------------------------------
-
 
 #TODO---------------------------------------------------------------
-def tcpTalk(client):
-    with client.socket as s:
-        data = s.recv(2048)
-        data = data.decode('utf-8')
-        if data[-1] == '\n':
-            client.addTeamName(data)
-    connectedClients.remove(client)
-    under2Clients.set()
+def tcpTalk(client, answerLock):
+    while True:
+        with client.socket as s:
+            inpt = s.recv(2048)
+            inpt = inpt.decode('utf-8')
+            if not inpt:
+                break
+            elif inpt[-1] == '\n':
+                client.addTeamName(inpt)
+        connectedClients.remove(client)
+        under2Clients.set()
 #TODO---------------------------------------------------------------
 
-def udpBroadcast():
-    udpSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-    with udpSocket:
-        udpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)    #at the socket level, set the broadcast option to 'on'
-        #udpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)    #run on linux
-        udpSocket.bind(("", 0))
-        print("Server started, listening on IP address ", HOSTIP) 
-        while True and tcpPort != (-1):
-            if len(connectedClients) >= 2:
-                under2Clients.wait()
-            try:
-                byteMsg = struct.pack('LbH', 0xabcddcba, 0x2, tcpPort)
-                udpSocket.sendall(byteMsg, ('<broadcast>',UDPPORT))
-            except:
-                print("exception occured during udp broadcast trasmission")
-            sleep(1)    #sends message once a second
-
-def game():
+def game(answerLock):
     while True:
         maxClients.wait()
         sockets = [conn.socket for conn in connectedClients]
@@ -137,6 +133,22 @@ def mathGenerator():
         riddle = riddle + "+" + str(c)
     return (riddle,res)
 
+def udpBroadcast():
+    udpSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
+    with udpSocket:
+        udpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)    #at the socket level, set the broadcast option to 'on'
+        #udpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)    #run on linux
+        udpSocket.bind(("", 0))
+        print("Server started, listening on IP address ", HOSTIP) 
+        while True and tcpPort != (-1):
+            if len(connectedClients) >= 2:
+                under2Clients.wait()
+            try:
+                byteMsg = struct.pack('LbH', 0xabcddcba, 0x2, tcpPort)
+                udpSocket.sendall(byteMsg, ('<broadcast>',UDPPORT))
+            except:
+                print("exception occured during udp broadcast trasmission")
+            sleep(1)    #sends message once a second
 
 if __name__ == '__main__':
-    server()
+    main()
