@@ -51,6 +51,7 @@ def tcpInit():
                 newClient = Client(clientSocket,addr)
                 connectedClients.append(newClient)
                 thread = threading.Thread(target=tcpTalk, args=(newClient,))
+                connectedClients.append(newClient)               
                 threads.append(thread)
                 thread.start()
             maxClients.set()
