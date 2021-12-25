@@ -45,7 +45,7 @@ def listenUDP():
             clientSocketUDP.listen(1)
             modifiedMessage, serverAddress = clientSocketUDP.recvfrom(2048)
             print("Received offer from", serverAddress, "attempting to connect...")
-            magicCookie , messageType, ServerPort = struct.unpack('ibH', buffer)
+            magicCookie , messageType, ServerPort = struct.unpack('ibH', modifiedMessage)
             if hex(magicCookie) == '0xabcddcba' and hex(messageType) == '0x2':
                 server = Server(serverAddress, ServerPort)
                 tcpConn(server)    
