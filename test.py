@@ -1,6 +1,7 @@
 import struct
 byteMsg = struct.pack('LbH', 0xabcddcba, 0x2, 7562)
-print(byteMsg)
+import sys
+print(sys.version)
 
 
 #https://pythonprogramming.net/sockets-tutorial-python-3/

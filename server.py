@@ -3,11 +3,9 @@ import socket
 from time import sleep
 import threading
 import struct
-from scapy.arch import get_if_addr
-#from scapy import *
+#from scapy.arch import get_if_addr
 
-HOSTIP = '127.0.0.1'
-#get_if_addr('eth1')
+HOSTIP = '127.0.0.1' #get_if_addr('eth1')
 UDPPORT = 13117
 
 class Client:
@@ -26,9 +24,9 @@ class AnswerLock:
         self.lock.acquire()
         try:
             self.answer = ans
-            self.answer = ply
+            self.player = ply
         finally:
-            self.lock.release
+            self.lock.release() #?
 
 
 tcpPort = -1
@@ -37,16 +35,14 @@ threads = list()
 under2Clients = threading.Event()
 under2Clients.set()
 maxClients = threading.Event()
-maxClients.clear()
 waitingRiddleAnswer = threading.Event()
-waitingRiddleAnswer.clear()
-
+tcpPortInitialized = threading.Event()
 
 def main():
     ansLock = AnswerLock()
     broadcastThread = threading.Thread(target=udpBroadcast)
     tcpThread = threading.Thread(target=tcpInit, args=ansLock)
-    gameThread = threading.Thread(target=tcpInit, args=ansLock)
+    gameThread = threading.Thread(target=game, args=ansLock)
     gameThread.start()
     tcpThread.start()
     broadcastThread.start()
@@ -59,6 +55,7 @@ def tcpInit(answerLock):
     with tcpSocket:
         tcpSocket.bind((socket.gethostname(),0))
         tcpPort = tcpSocket.getsockname()[1]
+        tcpPortInitialized.set()
         tcpSocket.listen(2)
         while True:
             while len(connectedClients) < 2:
@@ -85,6 +82,7 @@ def tcpTalk(client, answerLock):
                 break
             elif inpt[-1] == '\n':
                 client.addTeamName(inpt)
+            
         connectedClients.remove(client)
         under2Clients.set()
 #TODO---------------------------------------------------------------
@@ -95,17 +93,17 @@ def game(answerLock):
         sockets = [conn.socket for conn in connectedClients]
         with (s for s in sockets):
             teamNames = [conn.teamName for conn in connectedClients]
-            math = mathGenerator()
-            msg = gameMessage(teamNames, math[0])
-            for s in sockets:
-                s.sendall(msg)
+            riddle, ans = mathGenerator()
+            msg = gameMessage(teamNames, riddle)
             waitingRiddleAnswer.clear()
+            for s in sockets:
+                s.sendall(msg)         
             answered = waitingRiddleAnswer.wait(10.0)
             #TODO---------------------------------------------------------------
             if answered:
                 print("not time out")
             else:
-                print("not time out")
+                print("time out")
             #TODO---------------------------------------------------------------
 
 def gameMessage(teams, riddle):
@@ -140,8 +138,9 @@ def udpBroadcast():
         udpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)    #at the socket level, set the broadcast option to 'on'
         #udpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)    #run on linux
         udpSocket.bind(("", 0))
+        tcpPortInitialized.wait()
         print("Server started, listening on IP address ", HOSTIP) 
-        while True and tcpPort != (-1):
+        while True:
             if len(connectedClients) >= 2:
                 under2Clients.wait()
             try:
