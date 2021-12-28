@@ -5,6 +5,24 @@ from random import randint
 import struct
 import unittest
 import threading
+import socket
+
+#https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
+class ANSI:
+    CLEAR = '\033[0m'
+    #background color
+    HEADER = '\033[95m'
+    OKBLUE = '\033[94m'
+    OKCYAN = '\033[96m'
+    OKGREEN = '\033[92m'
+    WARNING = '\033[93m'
+    FAIL = '\033[91m'
+    RED = '\033[41m'
+    #foreground color
+    
+    #fonts
+    UNDERLINE = '\033[4m'
+    BOLD = '\033[1m'
 
 class NonBlockingLock:
     def __init__(self):
@@ -80,10 +98,29 @@ class Tests:
         for i in range(100000):
             mylock.incrementSafe()
     
+    def colorTest():
+        print(f"{ANSI.RED}Warning: No active frommets remain. Continue?{ANSI.CLEAR}")
+  
+    def socketTest():
+        ip = socket.gethostbyname(socket.gethostname())
+        print(ip)
+    
+    def bufferTest():
+        buffer = b''
+        message = "hello my name is X\nx\nyou"
+        buffer += message.encode(encoding='utf-8')
+        print("buffer is: ", buffer)
+        decoded = buffer.decode(encoding='utf-8', errors='ignore')
+        relevant = decoded.partition('\n')
+        print("relevant is: ", relevant[0])
+        
 def main():
     #Tests.messagesTest()
     #Tests.nonblockingLockTest()
     #Tests.blockingLockTest()
+    #Tests.colorTest()
+    #Tests.socketTest()
+    Tests.bufferTest()
     print()
 
 if __name__ == '__main__':
@@ -99,3 +136,4 @@ if __name__ == '__main__':
 #https://www.positronx.io/create-socket-server-with-multiple-clients-in-python/
 #https://coddingbuddy.com/article/58480889/python-socket-multiple-clients
 #https://www.bogotobogo.com/python/python_network_programming_tcp_server_client_chat_server_chat_client_select.php
+#https://docs.python.org/3/howto/sockets.html
