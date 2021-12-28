@@ -34,8 +34,6 @@ class Client:
             Client.connected -= 1
         gameOver.set()   #game no longer on max clients after 1one disconnects
         
-        
-     
 class GameMsgLock:        
     def __init__(self):
         self.gameMsg = ""
@@ -78,10 +76,6 @@ gameStart = threading.Event()           #tells the game it should start
 gameOver = threading.Event()  
 underMaxClients = threading.Event()     #server has less than the maxium number of players connected
 underMaxClients.set()
-
-#add extention "remove ssh"
-#choose the hackaton from the configuration file on the search bar on top
-#then open file
 
 def Main():
     ansLock = AnswerLock()
@@ -214,7 +208,7 @@ def udpBroadcast():
     udpSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     with udpSocket:
         udpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)     #at the socket level, set the broadcast option to 'on'
-        #udpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)    #run on linux
+        udpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)    #run on linux
         udpSocket.bind(("", 0))                                             #waits for TCP port to initialize
         while True:
             if len(connectedClients) >= MAXCLIENTS:
