@@ -1,9 +1,12 @@
+#-------------imports-------------
 from random import randint
 import socket
 from time import sleep
 import threading
 import struct
 
+
+#-------------constants-------------
 HOSTIP = socket.gethostbyname(socket.gethostname())     #finds name of host running thethe program, then translates it to IP
 UDPPORT = 13117             #predetermined udp listening port for clients
 TCPPORT = 2086              #our team tcp port
@@ -13,6 +16,9 @@ UDPFREQUENCY = 1            #delay between each UPD broadcast message
 MAGICCOOKIE = 0xabcddcba    #UDP message confirmation cookie
 OFFER = 0x2                 #UDP "offer" message flag
 
+
+#-------------helper classes-------------
+#holds all client related information
 class Client:
     clientCountLock = threading.Lock()
     connected = 0
@@ -30,12 +36,13 @@ class Client:
         if not riddleAnswered.is_set():
             ansLock.giveAnswer(-1, client.teamName) #tell game the player no longer playes (gives impossible answer)
         try:
-            connectedClients.remove(client)     #remove client from connected clients list
+            connectedClients.remove(client)         #remove client from connected clients list
             with Client.clientCountLock:
                 Client.connected -= 1
         finally:
-            gameOver.set()   #game no longer on max clients after 1one disconnects
-        
+            gameOver.set()                          #game no longer on max clients after 1one disconnects
+
+#used to inform game thread all connected clients recieved its message        
 class GameMsgLock:        
     def __init__(self):
         self.gameMsg = ""
@@ -51,6 +58,8 @@ class GameMsgLock:
             if (self.clientsUsedMsg >= MAXCLIENTS):
                 gameMsgUpdated.clear()
 
+#used to hold answer from the firs client to give it
+#lock is only released in the game thread after winner is decided
 class AnswerLock:
     def __init__(self):
         self.answer = ""
@@ -71,6 +80,7 @@ class AnswerLock:
         finally:
             return solution
 
+#text coloration class using ANSI
 class Color:
     END = '\033[0m'
     UNDERLINE = '\033[4m'
@@ -99,7 +109,9 @@ class Color:
             index += 1
         rainbowText += f"{Color.END}"
         return rainbowText
-    
+
+
+#-------------shared resources and events-------------    
 connectedClients = list()   #list of connected clients
 threads = list()            #list of active threads
 gameMsgUpdated = threading.Event()      #tells clients theres a new game message
@@ -110,6 +122,9 @@ gameOver = threading.Event()
 underMaxClients = threading.Event()     #server has less than the maxium number of players connected
 underMaxClients.set()
 
+
+#-------------primary functions-------------    
+#main function
 def Main():
     ansLock = AnswerLock()
     gameMsgLock = GameMsgLock()
@@ -123,41 +138,54 @@ def Main():
     tcpThread.join()
     broadcastThread.join()
 
+#running UDP broadcast thread
+def udpBroadcast():
+    udpSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)    #creates a new socket
+    with udpSocket:
+        udpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)     #at the socket level, set the broadcast option to 'on'
+        socketOptions(udpSocket)                                            #applies other socket option settings
+        udpSocket.bind(("", 0))                                             #binds the socket to any available adress and port
+        while True:
+            if len(connectedClients) >= MAXCLIENTS:
+                underMaxClients.wait()                                      #stop thread if max number of allowed clients are connected
+            try:
+                byteMsg = struct.pack('IbH', MAGICCOOKIE, OFFER, TCPPORT)   #creates message to be sent according to specified format
+                udpSocket.sendto(byteMsg, ('<broadcast>',UDPPORT))          #attempts to send message
+            except:
+                print("exception occured during udp broadcast trasmission") #error in case message failed to transmit
+            sleep(UDPFREQUENCY)                                             #sends broadcast message once a second
+
+#tcp connection manager thread
 def tcpInit(ansLock, gameMsgLock):
-    tcpSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
+    tcpSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)   #creates TCP socket
     with tcpSocket:
-        socketOptions(tcpSocket)
-        tcpSocket.bind((HOSTIP, TCPPORT))
-        tcpSocket.listen(MAXCLIENTS)
+        socketOptions(tcpSocket)                                    #sets basic socket options
+        tcpSocket.bind((HOSTIP, TCPPORT))                           #binds socket to our IP and port
+        tcpSocket.listen(MAXCLIENTS)                                #accept conections form up to MAXCLIENTS amount of clients
         print("Server started, listening on IP address ", f"{Color.BOLD}{Color.UNDERLINE}", HOSTIP, f"{Color.END}")
-        global connectedClients
+        global connectedClients                                     #informs function this variable is announced globally
         while True:
             while len(connectedClients) < MAXCLIENTS:
-                conn, addr = tcpSocket.accept()
-                newClient = Client(conn,addr)
-                newThread = threading.Thread(target=tcpTalk, args=(newClient, ansLock, gameMsgLock))
-                newThread.setName("")
-                connectedClients.append(newClient)
-                global threads               
-                threads.append(newThread)
-                newThread.start()
-            underMaxClients.clear()     #stops udp
+                try:
+                    conn, addr = tcpSocket.accept()                 #accepts connection
+                    newClient = Client(conn,addr)
+                    newThread = threading.Thread(target=tcpTalk, args=(newClient, ansLock, gameMsgLock))
+                    newThread.setName("")
+                    connectedClients.append(newClient)
+                    global threads                                  #informs function this variable is announced globally 
+                    threads.append(newThread)
+                    newThread.start()
+                except:
+                    print("client of address ", addr, " failed to conect.")
+            underMaxClients.clear()     #stops UDP broadcast
             gameStart.set()
-            gameOver.wait()
+            gameOver.wait()             #waits form game to end
             gameOver.clear()
-            clearThreads()  #clean dead threads
+            clearThreads()              #clean cleint specific threads
             if len(threads) < MAXCLIENTS:
-                underMaxClients.set()
+                underMaxClients.set()   #informs UDP broadcast to continue
 
-def clearThreads():
-    global threads
-    global connectedClients
-    threads = [t for t in threads if t.is_alive()]
-    for thread in threads:
-        stuckClients = [client for client in connectedClients if client.teamName == thread.getName()]
-        for client in stuckClients:
-            client.socket.close()
-            
+#tcp connection with specific client    
 def tcpTalk(client, ansLock, gameMsgLock):
     with client.socket as socket:
         teamName = readTeamName(socket)         #get team name form the client
@@ -177,25 +205,7 @@ def tcpTalk(client, ansLock, gameMsgLock):
                 socket.close()
     Client.disconnect(ansLock, client)
 
-def readTeamName(clientSocket):
-    buffer = b''                            #client message accumulator
-    while b'\n' not in buffer:              #wait for newline delimiter to stop listening
-        recieved = clientSocket.recv(1024)  #reading message form client (blocking)
-        if not recieved:
-            return None                         #connection ended
-        buffer += recieved                  #accumulates potentially long meesage
-    decoded = buffer.decode(encoding='utf-8', errors='ignore')  #convert message from bytes to string
-    teamName, seperator, remainder = decoded.partition('\n')    #partition client message according to \n
-    return teamName
-
-def readClientAnswer(clientSocket):
-    while True:
-        ansBytes = clientSocket.recv(1)
-        if not ansBytes:
-            return None
-        ans = bytes(ansBytes).decode(encoding='utf-8', errors='ignore')
-        return ans
-             
+#game thread in charge of generating messages for clients and deciding winners    
 def game(answerLock, gameMsgLock):
     while True:
         gameStart.wait()                   #wait until 2 clients are conected
@@ -221,6 +231,9 @@ def game(answerLock, gameMsgLock):
             gameStart.clear()                  #tells tcpInit thread the game ended nad clients are logged out
             gameOver.set()
 
+
+#-------------helper functions-------------
+#generates colorful welcome message containing the question the players need to answer  
 def gameStartMessage(teamNames, riddle):
     msg = "Welcome to Quick Maths.\n"
     msg = Color.makeRainbow(msg)
@@ -236,6 +249,7 @@ def gameStartMessage(teamNames, riddle):
     buffer = msg.encode(encoding='utf-8')
     return buffer
 
+#generates colorful message informing players the game ended and who the winner is
 def gameOverMessage(isDraw, solver, riddleAns):  
     msg = "Game over!\n"
     msg += "The correct answer was " + str(riddleAns) + "!\n"
@@ -246,6 +260,7 @@ def gameOverMessage(isDraw, solver, riddleAns):
     buffer = msg.encode(encoding='utf-8')
     return buffer
 
+#generates random simple math question
 def mathGenerator():
     operand = ["+","-"]
     a = randint(1, 9)
@@ -253,36 +268,56 @@ def mathGenerator():
     randop = randint(0, 1)
     riddle = str(a) + operand[randop] + str(b)
     res = eval(riddle)
-    if res > 9:
+    if res > 9:                         #if generated question results in an answer thats more than one digit
         c = randint(res-9, 9)
         res -= c
         riddle = riddle + "-" + str(c)
-    elif res < 0:
+    elif res < 0:                       #if generated question results in an answer thats a negative number
         c = randint((res*(-1)), 9)
         res += c
         riddle = riddle + "+" + str(c)
-    return (riddle,res)
+    return (riddle,res)                 #returns tupple containig riddle and answer
 
-def udpBroadcast():
-    udpSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
-    with udpSocket:
-        udpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)     #at the socket level, set the broadcast option to 'on'
-        socketOptions(udpSocket)
-        udpSocket.bind(("", 0))                                             #waits for TCP port to initialize
-        while True:
-            if len(connectedClients) >= MAXCLIENTS:
-                underMaxClients.wait()                                      #stop threat if max clients connected
-            try:
-                byteMsg = struct.pack('IbH', MAGICCOOKIE, OFFER, TCPPORT)   #creates message to be sent
-                udpSocket.sendto(byteMsg, ('<broadcast>',UDPPORT))          #attempts to send message
-            except:
-                print("exception occured during udp broadcast trasmission")
-            sleep(UDPFREQUENCY)                                             #sends message once a second
-
+#sets basic necesary socket options
 def socketOptions(socket):
     socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
     socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
     socket.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, 'eth1')
-    
+
+#reads client team name
+def readTeamName(clientSocket):
+    buffer = b''                            #client message accumulator
+    while b'\n' not in buffer:              #wait for newline delimiter to stop listening
+        try:
+            recieved = clientSocket.recv(1024)  #reading message form client (blocking)
+            if not recieved:
+                return None                     #connection ended
+            buffer += recieved                  #accumulates potentially long meesage
+        except:
+            return None
+    decoded = buffer.decode(encoding='utf-8', errors='ignore')  #convert message from bytes to string
+    teamName, seperator, remainder = decoded.partition('\n')    #partition client message according to \n
+    return teamName
+
+#reads riddle answer from client
+def readClientAnswer(clientSocket):
+    while True:
+        ansBytes = clientSocket.recv(1)         #recieve 1 character from client
+        if not ansBytes:
+            return None                         #if message empty, returns None to notify the connection ended
+        ans = bytes(ansBytes).decode(encoding='utf-8', errors='ignore') #decoded client string response
+        return ans
+
+#delets all still living client specific threads when the game ends
+def clearThreads():
+    global threads
+    global connectedClients
+    threads = [t for t in threads if t.is_alive()]  #goes over every still living client threads
+    for thread in threads:
+        stuckClients = [client for client in connectedClients if client.teamName == thread.getName()]   #finds client objects related to those threads
+        for client in stuckClients:
+            client.socket.close()                   #closes the client related socket to cause thread to end
+        thread.join()                               #will cause tcpInit to wait for all clients to close
+ 
 if __name__ == '__main__':
     Main()
