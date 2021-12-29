@@ -33,6 +33,7 @@ class Client:
             if Client.connected >= MAXCLIENTS:
                 gameStart.set()
     def disconnect(ansLock, client):
+        print("player ", client.teamName, " disconnected")
         if not riddleAnswered.is_set():
             ansLock.giveAnswer(-1, client.teamName) #tell game the player no longer playes (gives impossible answer)
         try:
@@ -118,7 +119,7 @@ gameMsgUpdated = threading.Event()      #tells clients theres a new game message
 clientsReady = threading.Event()        #all clients notify the game
 riddleAnswered = threading.Event()      #tells the game a client has a solution
 gameStart = threading.Event()           #tells the game it should start
-gameOver = threading.Event()  
+gameOver = threading.Event()            #tells tcpInit the game has ended
 underMaxClients = threading.Event()     #server has less than the maxium number of players connected
 underMaxClients.set()
 
@@ -142,9 +143,11 @@ def Main():
 def udpBroadcast():
     udpSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)    #creates a new socket
     with udpSocket:
+        udpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        udpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
         udpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)     #at the socket level, set the broadcast option to 'on'
-        socketOptions(udpSocket)                                            #applies other socket option settings
-        udpSocket.bind(("", 0))                                             #binds the socket to any available adress and port
+        #socketOptions(udpSocket)                                            #applies other socket option settings
+        udpSocket.bind(('', 0))                                             #binds the socket to any available adress and port
         while True:
             if len(connectedClients) >= MAXCLIENTS:
                 underMaxClients.wait()                                      #stop thread if max number of allowed clients are connected
@@ -159,8 +162,10 @@ def udpBroadcast():
 def tcpInit(ansLock, gameMsgLock):
     tcpSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)   #creates TCP socket
     with tcpSocket:
-        socketOptions(tcpSocket)                                    #sets basic socket options
-        tcpSocket.bind((HOSTIP, TCPPORT))                           #binds socket to our IP and port
+        tcpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+        tcpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+        #socketOptions(tcpSocket)                                    #sets basic socket options
+        tcpSocket.bind(('', TCPPORT))                           #binds socket to our IP and port
         tcpSocket.listen(MAXCLIENTS)                                #accept conections form up to MAXCLIENTS amount of clients
         print("Server started, listening on IP address ", f"{Color.BOLD}{Color.UNDERLINE}", HOSTIP, f"{Color.END}")
         global connectedClients                                     #informs function this variable is announced globally
@@ -189,6 +194,7 @@ def tcpInit(ansLock, gameMsgLock):
 def tcpTalk(client, ansLock, gameMsgLock):
     with client.socket as socket:
         teamName = readTeamName(socket)         #get team name form the client
+        print("player ", teamName, " has conected")
         threading.current_thread().setName(teamName)
         if teamName is not None:                #if connection hasn't ended
             client.setTeamName(teamName)        #sets the new team name
@@ -279,10 +285,10 @@ def mathGenerator():
     return (riddle,res)                 #returns tupple containig riddle and answer
 
 #sets basic necesary socket options
-def socketOptions(socket):
-    socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
-    socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-    socket.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, 'eth1')
+def socketOptions(mySocket):
+    mySocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+    mySocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    mySocket.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, 'eth1')
 
 #reads client team name
 def readTeamName(clientSocket):
