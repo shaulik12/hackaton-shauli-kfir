@@ -48,7 +48,7 @@ def listenUDP():
   # get hostName and hostAdress and move it to tcpConn
     clientSocketUDP = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)    #make a udp socket
     with clientSocketUDP:
-        clientSocketUDP.bind(('', UDPPORT))        
+        clientSocketUDP.bind(("172.99.225.225", UDPPORT))        
         print("Client started, listening for offer requests...")
         while True:
             modifiedMessage, serverAddress = clientSocketUDP.recvfrom(2048)   # getting the broadcast message
