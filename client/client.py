@@ -35,7 +35,7 @@ def TCPConn(server):
     clientSocketTCP = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     with clientSocketTCP:
         try:
-            # clientSocketTCP.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, 'eth1')
+            socketOptions(clientSocketUDP)
             clientSocketTCP.connect((server.addr , server.port))
             TEAMNAME = "teamTitans\n"
             encode_teamName = TEAMNAME.encode(encoding='utf-8')
@@ -49,6 +49,7 @@ def listenUDP():
   # get hostName and hostAdress and move it to tcpConn
     clientSocketUDP = socket.socket(socket.AF_INET, socket.SOCK_DGRAM)
     with clientSocketUDP:
+        socketOptions(clientSocketUDP)
         clientSocketUDP.bind(('', UDPPORT))
         print("Client started, listening for offer requests...")
         while True:
@@ -68,6 +69,10 @@ def listenUDP():
 def main():
     listenUDP()
 
+def socketOptions(socket):
+    socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+    socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    socket.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, 'eth1')
 
 if __name__ == '__main__':
     main()
