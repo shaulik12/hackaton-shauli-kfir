@@ -126,7 +126,7 @@ def Main():
 def tcpInit(ansLock, gameMsgLock):
     tcpSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     with tcpSocket:
-        tcpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, 'eth1')
+        socketOptions(tcpSocket)
         tcpSocket.bind((HOSTIP, TCPPORT))
         tcpSocket.listen(MAXCLIENTS)
         print("Server started, listening on IP address ", f"{Color.BOLD}{Color.UNDERLINE}", HOSTIP, f"{Color.END}")
@@ -267,8 +267,7 @@ def udpBroadcast():
     udpSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     with udpSocket:
         udpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)     #at the socket level, set the broadcast option to 'on'
-        udpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)     #run on linux
-        udpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, 'eth1')
+        socketOptions(udpSocket)
         udpSocket.bind(("", 0))                                             #waits for TCP port to initialize
         while True:
             if len(connectedClients) >= MAXCLIENTS:
@@ -280,5 +279,10 @@ def udpBroadcast():
                 print("exception occured during udp broadcast trasmission")
             sleep(UDPFREQUENCY)                                             #sends message once a second
 
+def socketOptions(socket):
+    socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)
+    socket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
+    socket.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, 'eth1')
+    
 if __name__ == '__main__':
     Main()
