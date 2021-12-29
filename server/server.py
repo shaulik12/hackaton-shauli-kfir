@@ -82,6 +82,7 @@ class Color:
     PURPLE = "\033[38;2;127;0;255m"
     ORANGE = "\033[38;2;255;135;70m"
     RAINDOW = [RED,ORANGE,YELLOW,GREEN,BLUE,PURPLE]
+    TEAMCOLORS = [RED,BLUE]
     def makeRainbow(text):
         rainbowText = ""
         index = 0
@@ -125,15 +126,17 @@ def Main():
 def tcpInit(ansLock, gameMsgLock):
     tcpSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     with tcpSocket:
+        tcpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, 'eth1')
         tcpSocket.bind((HOSTIP, TCPPORT))
         tcpSocket.listen(MAXCLIENTS)
-        print("Server started, listening on IP address ", f"{Color.BOLD}", HOSTIP, f"{Color.END}")
+        print("Server started, listening on IP address ", f"{Color.BOLD}{Color.UNDERLINE}", HOSTIP, f"{Color.END}")
         global connectedClients
         while True:
             while len(connectedClients) < MAXCLIENTS:
                 conn, addr = tcpSocket.accept()
                 newClient = Client(conn,addr)
                 newThread = threading.Thread(target=tcpTalk, args=(newClient, ansLock, gameMsgLock))
+                newThread.setName("")
                 connectedClients.append(newClient)
                 global threads               
                 threads.append(newThread)
@@ -141,13 +144,24 @@ def tcpInit(ansLock, gameMsgLock):
             underMaxClients.clear()     #stops udp
             gameStart.set()
             gameOver.wait()
-            threads = [t for t in threads if t.is_alive()]  #clean dead threads
+            gameOver.clear()
+            clearThreads()  #clean dead threads
             if len(threads) < MAXCLIENTS:
                 underMaxClients.set()
+
+def clearThreads():
+    global threads
+    global connectedClients
+    threads = [t for t in threads if t.is_alive()]
+    for thread in threads:
+        stuckClients = [client for client in connectedClients if client.teamName == thread.getName()]
+        for client in stuckClients:
+            client.socket.close()
             
 def tcpTalk(client, ansLock, gameMsgLock):
     with client.socket as socket:
         teamName = readTeamName(socket)         #get team name form the client
+        threading.current_thread().setName(teamName)
         if teamName is not None:                #if connection hasn't ended
             client.setTeamName(teamName)        #sets the new team name
             gameMsgUpdated.wait()                #wait for game to give math question
@@ -202,19 +216,25 @@ def game(answerLock, gameMsgLock):
                     solver = solver[0]
             endMsg = gameOverMessage(isDraw, solver, ans)
             gameMsgLock.setMsg(endMsg) 
-            print("Game over, sending out offer requests...")
+            print(f"{Color.RED}{Color.BOLD}Game over, sending out offer requests...{Color.END}")
         finally:
             gameStart.clear()                  #tells tcpInit thread the game ended nad clients are logged out
+            gameOver.set()
 
 def gameStartMessage(teamNames, riddle):
     msg = "Welcome to Quick Maths.\n"
+    msg = Color.makeRainbow(msg)
     for indx in range(len(teamNames)):
-        msg += "Player " + str(indx+1) + ": " + teamNames[indx] + "\n"
+        teamColor = Color.TEAMCOLORS[indx]
+        teamName = f"{teamColor}" + teamNames[indx]
+        msg += f"{Color.YELLOW}Player " + str(indx+1) + ": " + teamName + "\n"
     msg += "==\n"
-    msg += "Please answer the following question as fast as you can:\n"
+    request = "Please answer the following question as fast as you can:\n"
+    request = Color.makeRainbow(request)
+    msg += request
     msg += "How much is " + riddle + "?"
     buffer = msg.encode(encoding='utf-8')
-    return msg
+    return buffer
 
 def gameOverMessage(isDraw, solver, riddleAns):  
     msg = "Game over!\n"
@@ -224,7 +244,7 @@ def gameOverMessage(isDraw, solver, riddleAns):
     else:
         msg += "Congratulations to the winner: " + solver
     buffer = msg.encode(encoding='utf-8')
-    return msg
+    return buffer
 
 def mathGenerator():
     operand = ["+","-"]
@@ -247,7 +267,8 @@ def udpBroadcast():
     udpSocket = socket.socket(socket.AF_INET, socket.SOCK_DGRAM, socket.IPPROTO_UDP)
     with udpSocket:
         udpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)     #at the socket level, set the broadcast option to 'on'
-        udpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)    #run on linux
+        udpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)     #run on linux
+        udpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_BINDTODEVICE, 'eth1')
         udpSocket.bind(("", 0))                                             #waits for TCP port to initialize
         while True:
             if len(connectedClients) >= MAXCLIENTS:
