@@ -29,12 +29,10 @@ class Client:
     def disconnect(ansLock, client):
         if not riddleAnswered.is_set():
             ansLock.giveAnswer(-1, client.teamName) #tell game the player no longer playes (gives impossible answer)
-        try:
-            connectedClients.remove(client)     #remove client from connected clients list
-            with Client.clientCountLock:
-                Client.connected -= 1
-        finally:
-            gameOver.set()   #game no longer on max clients after 1one disconnects
+        connectedClients.remove(client)     #remove client from connected clients list
+        with Client.clientCountLock:
+            Client.connected -= 1
+        gameOver.set()   #game no longer on max clients after 1one disconnects
         
 class GameMsgLock:        
     def __init__(self):
@@ -71,34 +69,6 @@ class AnswerLock:
         finally:
             return solution
 
-class Color:
-    END = '\033[0m'
-    UNDERLINE = '\033[4m'
-    BOLD = '\033[1m'
-    RED = '\033[91m'
-    GREEN = "\033[92m"
-    YELLOW = "\033[33m"
-    BLUE = "\033[94m"
-    PURPLE = "\033[38;2;127;0;255m"
-    ORANGE = "\033[38;2;255;135;70m"
-    RAINDOW = [RED,ORANGE,YELLOW,GREEN,BLUE,PURPLE]
-    def makeRainbow(text):
-        rainbowText = ""
-        index = 0
-        color = 0
-        while index < len(text):
-            if (text[index] != ' ') and (text[index] != '\n') and (text[index] != '\t'):
-                textColor = Color.RAINDOW[color]
-                rainbowText += f"{textColor}" + text[index]
-                color += 1
-                if color >= len(Color.RAINDOW):
-                    color = 0
-            else:
-                rainbowText += text[index]
-            index += 1
-        rainbowText += f"{Color.END}"
-        return rainbowText
-    
 connectedClients = list()   #list of connected clients
 threads = list()            #list of active threads
 gameMsgUpdated = threading.Event()      #tells clients theres a new game message
@@ -125,13 +95,14 @@ def Main():
 def tcpInit(ansLock, gameMsgLock):
     tcpSocket = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
     with tcpSocket:
-        tcpSocket.bind((HOSTIP, TCPPORT))
+        tcpSocket.bind(('', TCPPORT))   #TODO hostIP
         tcpSocket.listen(MAXCLIENTS)
-        print("Server started, listening on IP address ", f"{Color.BOLD}", HOSTIP, f"{Color.END}")
+        print("Server started, listening on IP address ", tcpSocket.getsockname())
         global connectedClients
         while True:
             while len(connectedClients) < MAXCLIENTS:
                 conn, addr = tcpSocket.accept()
+                print("client ", addr, "attempted to connect")
                 newClient = Client(conn,addr)
                 newThread = threading.Thread(target=tcpTalk, args=(newClient, ansLock, gameMsgLock))
                 connectedClients.append(newClient)
@@ -148,6 +119,7 @@ def tcpInit(ansLock, gameMsgLock):
 def tcpTalk(client, ansLock, gameMsgLock):
     with client.socket as socket:
         teamName = readTeamName(socket)         #get team name form the client
+        print(teamName)     #TODO remove
         if teamName is not None:                #if connection hasn't ended
             client.setTeamName(teamName)        #sets the new team name
             gameMsgUpdated.wait()                #wait for game to give math question
@@ -194,6 +166,7 @@ def game(answerLock, gameMsgLock):
             isDraw = not riddleAnswered.wait(GAMETIMEOUT)  #waiting for riddle answer or 10 seconds
             riddleAnswered.clear()
             solver, guess = answerLock.checkSolution()
+            print("player ",solver, " guessed: ", guess)
             if guess != ans:
                 solver = [team for team in teamNames if team != solver]
                 if len(solver) == 0:
@@ -214,7 +187,7 @@ def gameStartMessage(teamNames, riddle):
     msg += "Please answer the following question as fast as you can:\n"
     msg += "How much is " + riddle + "?"
     buffer = msg.encode(encoding='utf-8')
-    return msg
+    return buffer
 
 def gameOverMessage(isDraw, solver, riddleAns):  
     msg = "Game over!\n"
@@ -224,7 +197,7 @@ def gameOverMessage(isDraw, solver, riddleAns):
     else:
         msg += "Congratulations to the winner: " + solver
     buffer = msg.encode(encoding='utf-8')
-    return msg
+    return buffer
 
 def mathGenerator():
     operand = ["+","-"]
@@ -248,7 +221,7 @@ def udpBroadcast():
     with udpSocket:
         udpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_BROADCAST, 1)     #at the socket level, set the broadcast option to 'on'
         udpSocket.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEPORT, 1)    #run on linux
-        udpSocket.bind(("", 0))                                             #waits for TCP port to initialize
+        udpSocket.bind(('', 0))                                             #waits for TCP port to initialize
         while True:
             if len(connectedClients) >= MAXCLIENTS:
                 underMaxClients.wait()                                      #stop threat if max clients connected
@@ -257,7 +230,7 @@ def udpBroadcast():
                 udpSocket.sendto(byteMsg, ('<broadcast>',UDPPORT))          #attempts to send message
             except:
                 print("exception occured during udp broadcast trasmission")
-            sleep(UDPFREQUENCY)                                             #sends message once a second
+            sleep(0.1)                                             #sends message once a second
 
 if __name__ == '__main__':
     Main()

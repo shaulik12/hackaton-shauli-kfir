@@ -8,21 +8,34 @@ import threading
 import socket
 
 #https://gist.github.com/fnky/458719343aabd01cfb17a3a4f7296797
-class ANSI:
-    CLEAR = '\033[0m'
-    #background color
-    HEADER = '\033[95m'
-    OKBLUE = '\033[94m'
-    OKCYAN = '\033[96m'
-    OKGREEN = '\033[92m'
-    WARNING = '\033[93m'
-    FAIL = '\033[91m'
-    RED = '\033[41m'
-    #foreground color
-    
-    #fonts
+class Color:
+    END = '\033[0m'
     UNDERLINE = '\033[4m'
     BOLD = '\033[1m'
+    RED = '\033[91m'
+    GREEN = "\033[92m"
+    YELLOW = "\033[33m"
+    BLUE = "\033[94m"
+    MAGENTA = "\033[95m"
+    ORANGE = "\033[38;2;255;135;70m"
+    RAINDOW = [RED,ORANGE,YELLOW,GREEN,BLUE,MAGENTA]
+    def makeRainbow(text):
+        rainbowText = ""
+        index = 0
+        color = 0
+        while index < len(text):
+            if (text[index] != ' ') and (text[index] != '\n') and (text[index] != '\t'):
+                textColor = Color.RAINDOW[color]
+                rainbowText += f"{textColor}" + text[index]
+                color += 1
+                if color >= len(Color.RAINDOW):
+                    color = 0
+            else:
+                rainbowText += text[index]
+            index += 1
+        rainbowText += f"{Color.END}"
+        return rainbowText
+        
 
 class NonBlockingLock:
     def __init__(self):
@@ -98,8 +111,17 @@ class Tests:
         for i in range(100000):
             mylock.incrementSafe()
     
-    def colorTest():
-        print(f"{ANSI.RED}Warning: No active frommets remain. Continue?{ANSI.CLEAR}")
+    def colorTest1():
+        msg = f"{Color.ORANGE}Notice:"
+        msg += f"{Color.RED} you color"
+        msg += f"{Color.YELLOW} has changed"
+        msg += f"{Color.END}"
+        print(msg)
+    
+    def colorTest2():
+        msg = "welcome to the game\nnew player!"
+        msg = Color.makeRainbow(msg)
+        print(msg)
   
     def socketTest():
         ip = socket.gethostbyname(socket.gethostname())
@@ -118,9 +140,9 @@ def main():
     #Tests.messagesTest()
     #Tests.nonblockingLockTest()
     #Tests.blockingLockTest()
-    #Tests.colorTest()
+    Tests.colorTest2()
     #Tests.socketTest()
-    Tests.bufferTest()
+    #Tests.bufferTest()
     print()
 
 if __name__ == '__main__':
